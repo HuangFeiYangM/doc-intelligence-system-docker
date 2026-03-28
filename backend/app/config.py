@@ -68,11 +68,17 @@ class Settings(BaseSettings):
 
     class Config:
         # Multiple possible .env file locations for flexibility
+        # Priority: .env.backend > .env (backward compatibility)
         env_file = [
-            ".env",                    # Current directory (backend/app)
-            "../.env",                 # Parent directory (backend)
-            "../../.env",              # Project root directory
-            "/app/.env",               # Docker container absolute path
+            # Primary: backend directory .env.backend files
+            ".env.backend",                # Current directory (backend/app)
+            "../.env.backend",             # Parent directory (backend)
+            "/app/.env.backend",           # Docker container absolute path
+            # Backward compatibility: legacy .env files
+            ".env",                        # Current directory (backend/app)
+            "../.env",                     # Parent directory (backend)
+            "../../.env",                  # Project root directory
+            "/app/.env",                   # Docker container absolute path
         ]
         env_file_encoding = "utf-8"
         case_sensitive = True
