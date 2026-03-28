@@ -1,11 +1,13 @@
 """
 Configuration management for the document intelligence system.
 """
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
+from pydantic import field_validator, FieldValidationInfo
 from pydantic_settings import BaseSettings
 
 
@@ -46,7 +48,8 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".docx", ".doc", ".xlsx", ".xls"]
 
-    # Paths
+    # Paths (can be overridden by environment variables)
+    # Note: These should be relative to the project root or absolute paths
     BASE_DIR: Path = Path(__file__).parent.parent.absolute()
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     TEMPLATE_DIR: Path = BASE_DIR / "templates"
@@ -57,10 +60,90 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_TASKS: int = 5
     TASK_TIMEOUT: int = 300  # 5 minutes
 
+    # Optional advanced configuration
+    APP_ENV: str = "development"
+    LOG_LEVEL: str = "INFO"
+    CORS_ALLOWED_ORIGINS: str = "*"
+    RATE_LIMIT_PER_MINUTE: int = 60
+
     class Config:
-        env_file = ".env"
+        # Multiple possible .env file locations for flexibility
+        env_file = [
+            ".env",                    # Current directory (backend/app)
+            "../.env",                 # Parent directory (backend)
+            "../../.env",              # Project root directory
+            "/app/.env",               # Docker container absolute path
+        ]
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra environment variables not defined
+
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def parse_allowed_extensions(cls, v):
+        """Parse ALLOWED_EXTENSIONS from JSON string or comma-separated list."""
+        if isinstance(v, str):
+            # Try to parse as JSON first
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
+            # Try comma-separated list
+            if "," in v:
+                # Remove brackets and quotes if present
+                cleaned = v.strip().strip("[]").replace('"', '').replace("'", "")
+                return [ext.strip() for ext in cleaned.split(",") if ext.strip()]
+            # Single extension
+            return [v.strip()]
+        return v
+
+    @field_validator("UPLOAD_DIR", "TEMPLATE_DIR", "OUTPUT_DIR", "LOG_DIR", mode="before")
+    @classmethod
+    def validate_paths(cls, v, info: FieldValidationInfo):
+        """Convert string paths to Path objects and resolve relative paths."""
+        if isinstance(v, str):
+            # If path is relative and starts with ./, resolve relative to BASE_DIR
+            if v.startswith("./") or v.startswith("../"):
+                # Get BASE_DIR from values if available
+                values = info.data
+                base_dir = values.get("BASE_DIR", Path(__file__).parent.parent.absolute())
+                return (base_dir.parent / v).resolve()
+            else:
+                # Absolute path or relative without ./
+                return Path(v).resolve()
+        return v
+
+    @field_validator("MAX_UPLOAD_SIZE", mode="before")
+    @classmethod
+    def parse_max_upload_size(cls, v):
+        """Parse MAX_UPLOAD_SIZE from string with size suffixes."""
+        if isinstance(v, str):
+            v = v.strip().upper()
+            if v.endswith("KB"):
+                return int(v[:-2]) * 1024
+            elif v.endswith("MB"):
+                return int(v[:-2]) * 1024 * 1024
+            elif v.endswith("GB"):
+                return int(v[:-2]) * 1024 * 1024 * 1024
+            else:
+                try:
+                    return int(v)
+                except ValueError:
+                    pass
+        return v
+
+    @field_validator("DEEPSEEK_API_KEY")
+    @classmethod
+    def validate_api_key(cls, v):
+        """Warn if API key is empty (but allow for testing)."""
+        if not v:
+            import warnings
+            warnings.warn(
+                "DEEPSEEK_API_KEY is empty. LLM features will not work.",
+                UserWarning
+            )
+        return v
 
 
 @lru_cache()

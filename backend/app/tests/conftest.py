@@ -14,8 +14,9 @@ from sqlalchemy.pool import NullPool
 from app.database import Base
 from app.config import get_settings
 
-# Test database URL
-TEST_DATABASE_URL = "mysql+asyncmy://root:password@localhost:3306/doc_intel_test"
+# Test database URL (can be overridden by environment variable)
+# Use SQLite for testing when Docker is not available
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///./test.db?mode=memory&cache=shared")
 
 
 @pytest.fixture(scope="session")
@@ -29,11 +30,19 @@ def event_loop():
 @pytest_asyncio.fixture(scope="session")
 async def engine():
     """Create a test database engine."""
-    engine = create_async_engine(
-        TEST_DATABASE_URL,
-        poolclass=NullPool,
-        echo=False,
-    )
+    # Adjust engine parameters based on database type
+    engine_kwargs = {
+        "echo": False,
+    }
+
+    # For SQLite, don't use connection pool parameters
+    if "sqlite" in TEST_DATABASE_URL:
+        engine_kwargs["poolclass"] = NullPool
+    else:
+        # For MySQL/other databases, use connection pool
+        engine_kwargs["poolclass"] = NullPool
+
+    engine = create_async_engine(TEST_DATABASE_URL, **engine_kwargs)
 
     # Create tables
     async with engine.begin() as conn:
@@ -98,8 +107,8 @@ def sample_field_mapping():
 
 @pytest.fixture
 def mock_deepseek_api_key():
-    """Mock DeepSeek API key for testing."""
-    return "sk-test-key-for-testing-only"
+    """Mock DeepSeek API key for testing (can be overridden by environment variable)."""
+    return os.getenv("TEST_DEEPSEEK_API_KEY", "sk-test-key-for-testing-only")
 
 
 # Configure pytest-asyncio

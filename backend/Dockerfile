@@ -24,7 +24,7 @@ COPY . .
 RUN mkdir -p uploads templates outputs logs
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8001
 
 # Set environment variables
 ENV PYTHONPATH=/app

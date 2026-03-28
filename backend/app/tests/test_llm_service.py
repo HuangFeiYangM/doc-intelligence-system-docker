@@ -9,12 +9,9 @@ from app.services.llm_service import LLMService, LLMServiceError
 from app.config import get_settings
 
 
-# Read DeepSeek API key from file
-DEEPSEEK_API_KEY = None
-api_key_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "..", "deepseekapikey.md")
-if os.path.exists(api_key_path):
-    with open(api_key_path, "r") as f:
-        DEEPSEEK_API_KEY = f.read().strip()
+# Read DeepSeek API key from environment variable
+# Priority: TEST_DEEPSEEK_API_KEY > DEEPSEEK_API_KEY
+DEEPSEEK_API_KEY = os.getenv("TEST_DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
 
 
 class TestLLMService:
