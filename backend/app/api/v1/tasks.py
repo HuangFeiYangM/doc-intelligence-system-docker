@@ -4,10 +4,12 @@ Task management API endpoints.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import TaskStatus
+from app.dependencies import get_current_user
+from app.models import TaskStatus, User
 from app.schemas import (
     TaskResponse,
     TaskStatusResponse,
@@ -21,13 +23,14 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 @router.get("/{task_id}/status", response_model=TaskStatusResponse)
 async def get_task_status(
-    task_id: str,
-    db: AsyncSession = Depends(get_db)
+    task_id: UUID4,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Get the status of a processing task.
 
     Args:
-        task_id: Task ID
+        task_id: Task ID (UUID format)
         db: Database session
 
     Returns:
@@ -35,7 +38,7 @@ async def get_task_status(
     """
     task_service = TaskService(db)
     try:
-        return await task_service.get_task_status(task_id)
+        return await task_service.get_task_status(str(task_id))
     except TaskServiceError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -45,20 +48,21 @@ async def get_task_status(
 
 @router.get("/{task_id}/result", response_model=TaskResultResponse)
 async def get_task_result(
-    task_id: str,
-    db: AsyncSession = Depends(get_db)
+    task_id: UUID4,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Get the result of a completed task.
 
     Args:
-        task_id: Task ID
+        task_id: Task ID (UUID format)
         db: Database session
 
     Returns:
         Task result with extracted data
     """
     task_service = TaskService(db)
-    task = await task_service.get_task(task_id)
+    task = await task_service.get_task(str(task_id))
 
     if not task:
         raise HTTPException(
@@ -69,8 +73,7 @@ async def get_task_result(
     return TaskResultResponse(
         task_id=task.id,
         status=task.status.value,
-        extracted_data=task.extracted_data,
-        output_file_path=task.output_file_path
+        extracted_data=task.extracted_data
     )
 
 
@@ -79,7 +82,8 @@ async def list_tasks(
     status: Optional[TaskStatus] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """List tasks with optional filtering.
 
@@ -97,22 +101,23 @@ async def list_tasks(
     return tasks
 
 
-@router.post("/{task_id}/cancel")
+@router.post("/{task_id}/cancel", response_model=ErrorResponse)
 async def cancel_task(
-    task_id: str,
-    db: AsyncSession = Depends(get_db)
+    task_id: UUID4,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Cancel a pending task.
 
     Args:
-        task_id: Task ID
+        task_id: Task ID (UUID format)
         db: Database session
 
     Returns:
         Cancellation result
     """
     task_service = TaskService(db)
-    cancelled = await task_service.cancel_task(task_id)
+    cancelled = await task_service.cancel_task(str(task_id))
 
     if not cancelled:
         raise HTTPException(
@@ -120,4 +125,4 @@ async def cancel_task(
             detail="Task not found or cannot be cancelled (already processing/completed)"
         )
 
-    return {"message": "Task cancelled successfully"}
+    return ErrorResponse(error="Success", detail="Task cancelled successfully")

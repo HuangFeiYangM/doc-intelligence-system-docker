@@ -1,6 +1,7 @@
 """
 Document parser module for extracting text from various document formats.
 """
+import logging
 import os
 from pathlib import Path
 from typing import Optional, Union
@@ -11,6 +12,9 @@ from docx import Document as DocxDocument
 
 from app.config import get_settings
 from app.models import DocumentType
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -49,15 +53,29 @@ class DocumentParser:
         Raises:
             DocumentParserError: If parsing fails
         """
+        file_path = Path(file_path)
+        logger.info(f"Starting PDF parsing: {file_path}")
+
         try:
             text_parts = []
             with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(page_text)
-            return "\n".join(text_parts)
+                page_count = len(pdf.pages)
+                logger.debug(f"PDF has {page_count} pages")
+
+                for page_num, page in enumerate(pdf.pages, 1):
+                    try:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_parts.append(page_text)
+                    except Exception as e:
+                        logger.warning(f"Failed to extract text from page {page_num}: {e}")
+
+            result = "\n".join(text_parts)
+            logger.info(f"PDF parsing completed: {file_path}, extracted {len(result)} characters")
+            return result
+
         except Exception as e:
+            logger.error(f"Failed to parse PDF {file_path}: {e}", exc_info=True)
             raise DocumentParserError(f"Failed to parse PDF: {str(e)}")
 
     @staticmethod
@@ -73,14 +91,19 @@ class DocumentParser:
         Raises:
             DocumentParserError: If parsing fails
         """
+        file_path = Path(file_path)
+        logger.info(f"Starting Word document parsing: {file_path}")
+
         try:
             doc = DocxDocument(file_path)
             text_parts = []
+
+            # Extract paragraphs
             for para in doc.paragraphs:
                 if para.text.strip():
                     text_parts.append(para.text)
 
-            # Also extract text from tables
+            # Extract text from tables
             for table in doc.tables:
                 for row in table.rows:
                     row_text = []
@@ -90,8 +113,12 @@ class DocumentParser:
                     if row_text:
                         text_parts.append(" | ".join(row_text))
 
-            return "\n".join(text_parts)
+            result = "\n".join(text_parts)
+            logger.info(f"Word document parsing completed: {file_path}, extracted {len(result)} characters")
+            return result
+
         except Exception as e:
+            logger.error(f"Failed to parse Word document {file_path}: {e}", exc_info=True)
             raise DocumentParserError(f"Failed to parse Word document: {str(e)}")
 
     @staticmethod
@@ -107,19 +134,32 @@ class DocumentParser:
         Raises:
             DocumentParserError: If parsing fails
         """
+        file_path = Path(file_path)
+        logger.info(f"Starting Excel parsing: {file_path}")
+
         try:
-            # Read all sheets
-            excel_file = pd.ExcelFile(file_path)
+            # Read all sheets using context manager to ensure file is closed
             text_parts = []
 
-            for sheet_name in excel_file.sheet_names:
-                df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                text_parts.append(f"Sheet: {sheet_name}")
-                text_parts.append(df.to_string(index=False))
-                text_parts.append("-" * 50)
+            with pd.ExcelFile(file_path) as excel_file:
+                sheet_names = excel_file.sheet_names
+                logger.debug(f"Excel has {len(sheet_names)} sheets: {sheet_names}")
 
-            return "\n".join(text_parts)
+                for sheet_name in sheet_names:
+                    try:
+                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                        text_parts.append(f"Sheet: {sheet_name}")
+                        text_parts.append(df.to_string(index=False))
+                        text_parts.append("-" * 50)
+                    except Exception as e:
+                        logger.warning(f"Failed to read sheet '{sheet_name}': {e}")
+
+            result = "\n".join(text_parts)
+            logger.info(f"Excel parsing completed: {file_path}, extracted {len(result)} characters")
+            return result
+
         except Exception as e:
+            logger.error(f"Failed to parse Excel file {file_path}: {e}", exc_info=True)
             raise DocumentParserError(f"Failed to parse Excel file: {str(e)}")
 
     @classmethod
@@ -136,19 +176,37 @@ class DocumentParser:
             DocumentParserError: If file not found or parsing fails
         """
         file_path = Path(file_path)
+        logger.info(f"Starting text extraction: {file_path}")
+
         if not file_path.exists():
+            logger.error(f"File not found: {file_path}")
             raise DocumentParserError(f"File not found: {file_path}")
 
-        doc_type = cls.get_document_type(file_path)
+        if not os.access(file_path, os.R_OK):
+            logger.error(f"File not readable: {file_path}")
+            raise DocumentParserError(f"File not readable: {file_path}")
 
-        if doc_type == DocumentType.PDF:
-            return cls.parse_pdf(file_path)
-        elif doc_type == DocumentType.WORD:
-            return cls.parse_word(file_path)
-        elif doc_type == DocumentType.EXCEL:
-            return cls.parse_excel(file_path)
-        else:
-            raise DocumentParserError(f"Unsupported document type: {doc_type}")
+        try:
+            doc_type = cls.get_document_type(file_path)
+            logger.debug(f"Document type detected: {doc_type}")
+
+            if doc_type == DocumentType.PDF:
+                result = cls.parse_pdf(file_path)
+            elif doc_type == DocumentType.WORD:
+                result = cls.parse_word(file_path)
+            elif doc_type == DocumentType.EXCEL:
+                result = cls.parse_excel(file_path)
+            else:
+                raise DocumentParserError(f"Unsupported document type: {doc_type}")
+
+            logger.info(f"Text extraction completed: {file_path}, {len(result)} characters")
+            return result
+
+        except DocumentParserError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error extracting text from {file_path}: {e}", exc_info=True)
+            raise DocumentParserError(f"Failed to extract text: {str(e)}")
 
     @classmethod
     def extract_text_with_metadata(cls, file_path: Union[str, Path]) -> dict:
@@ -161,12 +219,19 @@ class DocumentParser:
             Dictionary containing text content and metadata
         """
         file_path = Path(file_path)
+        logger.info(f"Extracting text with metadata: {file_path}")
+
         text = cls.extract_text(file_path)
         doc_type = cls.get_document_type(file_path)
+        file_stat = file_path.stat()
 
-        return {
+        metadata = {
             "text": text,
             "file_name": file_path.name,
-            "file_size": file_path.stat().st_size,
+            "file_size": file_stat.st_size,
+            "file_modified": file_stat.st_mtime,
             "document_type": doc_type.value,
         }
+
+        logger.info(f"Metadata extraction completed: {file_path}")
+        return metadata

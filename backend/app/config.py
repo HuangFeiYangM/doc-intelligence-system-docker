@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     DEEPSEEK_TIMEOUT: int = 90
 
     # File Upload
-    MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50MB
+    MAX_UPLOAD_SIZE: int = 500 * 1024 * 1024  # 500MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".docx", ".doc", ".xlsx", ".xls"]
 
     # Paths (can be overridden by environment variables)
@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # Task Processing
     MAX_CONCURRENT_TASKS: int = 5
     TASK_TIMEOUT: int = 300  # 5 minutes
+
+    # JWT Authentication
+    JWT_SECRET_KEY: str = "change-this-secret-key-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+
+    # Default Admin User
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin123"  # Change in production!
 
     # Optional advanced configuration
     APP_ENV: str = "development"
@@ -74,11 +83,7 @@ class Settings(BaseSettings):
             ".env.backend",                # Current directory (backend/app)
             "../.env.backend",             # Parent directory (backend)
             "/app/.env.backend",           # Docker container absolute path
-            # Backward compatibility: legacy .env files
-            ".env",                        # Current directory (backend/app)
-            "../.env",                     # Parent directory (backend)
-            "../../.env",                  # Project root directory
-            "/app/.env",                   # Docker container absolute path
+
         ]
         env_file_encoding = "utf-8"
         case_sensitive = True

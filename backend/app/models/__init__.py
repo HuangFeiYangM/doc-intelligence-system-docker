@@ -97,3 +97,17 @@ class Template(Base):
 
     # Relationships
     tasks = relationship("Task", back_populates="template")
+
+class User(Base):
+    """User model for authentication."""
+
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True)
+    username = Column(String(50), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(String(1), default="1", nullable=False)  # "1"=active, "0"=inactive
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)

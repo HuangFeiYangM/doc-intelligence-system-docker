@@ -1,42 +1,13 @@
 """
 FastAPI dependencies.
 """
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends
+from fastapi.security import HTTPBearer
 
-from app.config import get_settings
+from app.api.v1.auth import get_current_user, verify_token, create_default_admin
 from app.database import get_db
 
-settings = get_settings()
-security = HTTPBearer(auto_error=False)
+security = HTTPBearer()
 
-
-async def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> str:
-    """Verify Bearer token (placeholder for auth implementation).
-
-    Args:
-        credentials: HTTP Authorization credentials
-
-    Returns:
-        User identifier
-
-    Raises:
-        HTTPException: If authentication fails
-    """
-    # Placeholder: Implement actual JWT or API key validation
-    # For now, allow all requests in development
-    return "anonymous"
-
-
-async def get_current_user(token: str = Depends(verify_token)) -> dict:
-    """Get current authenticated user.
-
-    Args:
-        token: Verified token
-
-    Returns:
-        User dictionary
-    """
-    return {"id": token, "name": "Anonymous User"}
+# Re-export for backward compatibility
+__all__ = ["security", "verify_token", "get_current_user", "create_default_admin"]

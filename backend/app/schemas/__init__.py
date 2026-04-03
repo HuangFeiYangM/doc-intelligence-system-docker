@@ -3,17 +3,16 @@ Pydantic schemas for request and response validation.
 """
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, UUID4
 
 from app.models import TaskStatus, DocumentType
 
 
 # Task Schemas
 class TaskBase(BaseModel):
-    document_id: str
-    template_id: Optional[str] = None
+    document_id: UUID4
+    template_id: Optional[UUID4] = None
 
 
 class TaskCreate(TaskBase):
@@ -23,11 +22,11 @@ class TaskCreate(TaskBase):
 class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: UUID4
     status: str
-    progress: int
-    document_id: str
-    template_id: Optional[str]
+    progress: int = Field(..., ge=0, le=100)
+    document_id: UUID4
+    template_id: Optional[UUID4] = None
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -35,9 +34,9 @@ class TaskResponse(BaseModel):
 
 
 class TaskStatusResponse(BaseModel):
-    task_id: str
+    task_id: UUID4
     status: str
-    progress: int
+    progress: int = Field(..., ge=0, le=100)
     created_at: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -45,10 +44,9 @@ class TaskStatusResponse(BaseModel):
 
 
 class TaskResultResponse(BaseModel):
-    task_id: str
+    task_id: UUID4
     status: str
     extracted_data: Optional[Dict[str, Any]] = None
-    output_file_path: Optional[str] = None
 
 
 # Document Schemas
@@ -112,3 +110,15 @@ class UploadResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
+
+
+# Auth Schemas
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int

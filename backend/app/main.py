@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.api import router as api_router
 from app.config import get_settings, ensure_directories
-from app.database import init_db, close_db
+from app.database import init_db, close_db, get_db
+from app.dependencies import create_default_admin
 from app.middleware import setup_middleware
 
 settings = get_settings()
@@ -20,6 +21,12 @@ async def lifespan(app: FastAPI):
     # Startup
     ensure_directories()
     await init_db()
+
+    # Create default admin user
+    async for db in get_db():
+        await create_default_admin(db)
+        break  # Only need one session
+
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
     yield

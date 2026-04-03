@@ -5,9 +5,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models import User
 from app.services import TaskService
 
 router = APIRouter(prefix="/download", tags=["Download"])
@@ -15,20 +18,21 @@ router = APIRouter(prefix="/download", tags=["Download"])
 
 @router.get("/{task_id}")
 async def download_result(
-    task_id: str,
-    db: AsyncSession = Depends(get_db)
+    task_id: UUID4,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Download the generated Excel file for a completed task.
 
     Args:
-        task_id: Task ID
+        task_id: Task ID (UUID format)
         db: Database session
 
     Returns:
         File download response
     """
     task_service = TaskService(db)
-    task = await task_service.get_task(task_id)
+    task = await task_service.get_task(str(task_id))
 
     if not task:
         raise HTTPException(
@@ -48,7 +52,23 @@ async def download_result(
             detail="Output file not found"
         )
 
-    file_path = Path(task.output_file_path)
+    # Validate file path to prevent path traversal
+    try:
+        file_path = Path(task.output_file_path).resolve()
+        output_dir = Path(task_service.output_dir).resolve() if hasattr(task_service, 'output_dir') else file_path.parent
+
+        # Ensure the file is within the expected output directory
+        if not str(file_path).startswith(str(output_dir)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid file path"
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path"
+        )
+
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
