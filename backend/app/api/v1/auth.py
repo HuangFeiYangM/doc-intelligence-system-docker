@@ -1,5 +1,5 @@
 """
-Authentication API endpoints.
+用户认证 API 端点。
 """
 from datetime import datetime, timedelta
 from typing import Optional
@@ -25,17 +25,17 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash."""
+    """验证密码与哈希值是否匹配。"""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    """Generate password hash."""
+    """生成密码哈希值。"""
     return pwd_context.hash(password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create JWT access token."""
+    """创建 JWT 访问令牌。"""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -48,13 +48,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
-    """Get user by username."""
+    """根据用户名获取用户。"""
     result = await db.execute(select(User).where(User.username == username))
     return result.scalar_one_or_none()
 
 
 async def authenticate_user(db: AsyncSession, username: str, password: str) -> Optional[User]:
-    """Authenticate user with username and password."""
+    """使用用户名和密码验证用户。"""
     user = await get_user_by_username(db, username)
     if not user:
         return None
@@ -66,15 +66,15 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
 
 
 async def create_default_admin(db: AsyncSession) -> None:
-    """Create default admin user if no users exist."""
-    # Check if any users exist
+    """如果不存在用户，则创建默认管理员用户。"""
+    # 检查是否存在任何用户
     result = await db.execute(select(User))
     existing_user = result.scalar_one_or_none()
 
     if existing_user:
         return
 
-    # Create default admin user
+    # 创建默认管理员用户
     admin_user = User(
         id=str(uuid4()),
         username=settings.ADMIN_USERNAME,
@@ -87,22 +87,22 @@ async def create_default_admin(db: AsyncSession) -> None:
     print(f"Default admin user created: {settings.ADMIN_USERNAME}")
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, summary="用户登录", description="使用用户名和密码登录获取访问令牌")
 async def login(
     login_data: LoginRequest,
     db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
-    """Login with username and password to get access token.
+    """使用用户名和密码登录获取访问令牌。
 
     Args:
-        login_data: Login credentials
-        db: Database session
+        login_data: 登录凭据
+        db: 数据库会话
 
     Returns:
-        Token response with access token
+        令牌响应，包含访问令牌
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: 如果认证失败
     """
     user = await authenticate_user(db, login_data.username, login_data.password)
 
@@ -113,11 +113,11 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Update last login time
+    # 更新最后登录时间
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    # Create access token
+    # 创建访问令牌
     access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "user_id": user.id},
@@ -135,17 +135,17 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    """Get current authenticated user from token.
+    """从令牌中获取当前认证用户。
 
     Args:
-        credentials: HTTP Authorization credentials
-        db: Database session
+        credentials: HTTP 认证凭据
+        db: 数据库会话
 
     Returns:
-        User object
+        用户对象
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: 如果认证失败
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -190,17 +190,17 @@ async def verify_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> str:
-    """Verify Bearer token and return username.
+    """验证 Bearer 令牌并返回用户名。
 
     Args:
-        credentials: HTTP Authorization credentials
-        db: Database session
+        credentials: HTTP 认证凭据
+        db: 数据库会话
 
     Returns:
-        Username
+        用户名
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: 如果认证失败
     """
     user = await get_current_user(credentials, db)
     return user.username

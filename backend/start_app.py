@@ -1,5 +1,5 @@
 """
-Application entry point script.
+应用程序入口点脚本。
 """
 import uvicorn
 

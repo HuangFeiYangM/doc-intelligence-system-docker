@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # Application
-    APP_NAME: str = "Doc Intelligence System"
+    APP_NAME: str = "文档智能系统"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 

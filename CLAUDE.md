@@ -48,7 +48,6 @@ doc-intelligence-system-docker/
 │   │   │   └── task_service.py     # Task orchestration
 │   │   ├── repositories/    # Data access layer
 │   │   ├── utils/           # Utility functions
-│   │   ├── tests/           # Test files
 │   │   ├── main.py          # FastAPI entry
 │   │   ├── config.py        # Settings
 │   │   └── database.py      # DB connection

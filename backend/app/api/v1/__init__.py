@@ -1,5 +1,5 @@
 """
-API v1 router initialization.
+API v1 路由器初始化。
 """
 from fastapi import APIRouter
 
@@ -11,7 +11,7 @@ from app.api.v1.download import router as download_router
 
 router = APIRouter(prefix="/v1")
 
-# Include all sub-routers
+# 包含所有子路由器
 router.include_router(auth_router)
 router.include_router(documents_router)
 router.include_router(tasks_router)

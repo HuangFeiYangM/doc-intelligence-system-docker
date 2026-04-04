@@ -1,5 +1,5 @@
 """
-File download API endpoints.
+文件下载 API 端点。
 """
 from pathlib import Path
 
@@ -13,23 +13,23 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.services import TaskService
 
-router = APIRouter(prefix="/download", tags=["Download"])
+router = APIRouter(prefix="/download", tags=["download"])
 
 
-@router.get("/{task_id}")
+@router.get("/{task_id}", summary="下载结果文件", description="下载已完成任务生成的 Excel 文件")
 async def download_result(
     task_id: UUID4,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Download the generated Excel file for a completed task.
+    """下载已完成任务生成的 Excel 文件。
 
     Args:
-        task_id: Task ID (UUID format)
-        db: Database session
+        task_id: 任务ID（UUID格式）
+        db: 数据库会话
 
     Returns:
-        File download response
+        文件下载响应
     """
     task_service = TaskService(db)
     task = await task_service.get_task(str(task_id))

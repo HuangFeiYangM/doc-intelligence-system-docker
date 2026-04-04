@@ -1,5 +1,5 @@
 """
-Template management API endpoints.
+模板管理 API 端点。
 """
 import os
 import uuid
@@ -17,40 +17,40 @@ from app.models import Template, User
 from app.repositories import TemplateRepository
 from app.schemas import TemplateCreate, TemplateResponse, TemplateListResponse, ErrorResponse
 
-router = APIRouter(prefix="/templates", tags=["Templates"])
+router = APIRouter(prefix="/templates", tags=["templates"])
 settings = get_settings()
 
 
 def secure_filename(filename: str) -> str:
-    """Secure a filename by removing potentially dangerous characters."""
-    # Remove path traversal characters
+    """通过移除潜在危险字符来保护文件名。"""
+    # 移除路径遍历字符
     filename = Path(filename).name
-    # Keep only safe characters
+    # 仅保留安全字符
     import re
     filename = re.sub(r'[^\w\s.-]', '', filename).strip()
     return filename
 
 
-@router.post("", response_model=TemplateResponse)
+@router.post("", response_model=TemplateResponse, summary="创建模板", description="创建一个新的 Excel 模板")
 async def create_template(
-    name: str = Form(..., min_length=1, max_length=255),
-    description: Optional[str] = Form(None, max_length=1000),
-    field_mapping: str = Form(...),
-    file: Optional[UploadFile] = File(None),
+    name: str = Form(..., min_length=1, max_length=255, description="模板名称"),
+    description: Optional[str] = Form(None, max_length=1000, description="模板描述（可选）"),
+    field_mapping: str = Form(..., description="JSON 字符串，映射字段名到单元格地址"),
+    file: Optional[UploadFile] = File(None, description="可选的 Excel 模板文件（最大 500MB）"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new Excel template.
+    """创建一个新的 Excel 模板。
 
     Args:
-        name: Template name
-        description: Template description
-        field_mapping: JSON string mapping field names to cell addresses
-        file: Optional Excel template file (max 500MB)
-        db: Database session
+        name: 模板名称
+        description: 模板描述
+        field_mapping: JSON 字符串，映射字段名到单元格地址
+        file: 可选的 Excel 模板文件（最大 500MB）
+        db: 数据库会话
 
     Returns:
-        Created template
+        创建的模板
     """
     import json
     try:
@@ -140,42 +140,42 @@ async def create_template(
     return template
 
 
-@router.get("", response_model=TemplateListResponse)
+@router.get("", response_model=TemplateListResponse, summary="模板列表", description="列出所有可用模板")
 async def list_templates(
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000, description="返回结果的最大数量"),
+    offset: int = Query(0, ge=0, description="跳过的结果数量"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all available templates.
+    """列出所有可用模板。
 
     Args:
-        limit: Maximum number of results
-        offset: Number of results to skip
-        db: Database session
+        limit: 返回结果的最大数量
+        offset: 跳过的结果数量
+        db: 数据库会话
 
     Returns:
-        List of templates
+        模板列表
     """
     repo = TemplateRepository(db)
     templates = await repo.list_all(limit, offset)
     return TemplateListResponse(templates=templates)
 
 
-@router.get("/{template_id}", response_model=TemplateResponse)
+@router.get("/{template_id}", response_model=TemplateResponse, summary="获取模板", description="根据ID获取模板信息")
 async def get_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get a template by ID.
+    """根据ID获取模板信息。
 
     Args:
-        template_id: Template ID
-        db: Database session
+        template_id: 模板ID
+        db: 数据库会话
 
     Returns:
-        Template information
+        模板信息
     """
     repo = TemplateRepository(db)
     template = await repo.get_by_id(template_id)
@@ -189,20 +189,20 @@ async def get_template(
     return template
 
 
-@router.delete("/{template_id}")
+@router.delete("/{template_id}", summary="删除模板", description="删除指定的模板")
 async def delete_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete a template.
+    """删除指定的模板。
 
     Args:
-        template_id: Template ID
-        db: Database session
+        template_id: 模板ID
+        db: 数据库会话
 
     Returns:
-        Deletion result
+        删除结果
     """
     repo = TemplateRepository(db)
     deleted = await repo.delete(template_id)

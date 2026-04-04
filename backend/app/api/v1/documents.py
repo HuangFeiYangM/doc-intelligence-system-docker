@@ -1,5 +1,5 @@
 """
-Document upload API endpoints.
+文档上传 API 端点。
 """
 import os
 import uuid
@@ -18,26 +18,26 @@ from app.schemas import DocumentResponse, UploadResponse, ErrorResponse
 from app.services import TaskService
 from app.utils.file_utils import validate_file_type, save_upload_file
 
-router = APIRouter(prefix="/documents", tags=["Documents"])
+router = APIRouter(prefix="/documents", tags=["documents"])
 settings = get_settings()
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", response_model=UploadResponse, summary="上传文档", description="上传 PDF、Word 或 Excel 文档进行处理")
 async def upload_document(
-    file: UploadFile = File(...),
-    template_id: Optional[UUID4] = Form(None),
+    file: UploadFile = File(..., description="要上传的文档文件（PDF、Word 或 Excel，最大 500MB）"),
+    template_id: Optional[UUID4] = Form(None, description="用于处理的模板 ID（可选）"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Upload a document for processing.
+    """上传文档进行处理。
 
     Args:
-        file: The document file to upload (PDF, Word, or Excel, max 500MB)
-        template_id: Optional template ID to use for processing
-        db: Database session
+        file: 要上传的文档文件（PDF、Word 或 Excel，最大 500MB）
+        template_id: 用于处理的模板 ID（可选）
+        db: 数据库会话
 
     Returns:
-        Upload response with document and task IDs
+        上传响应，包含文档和任务 ID
     """
     # Check file size
     file.file.seek(0, os.SEEK_END)
@@ -110,20 +110,20 @@ async def upload_document(
     )
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/{document_id}", response_model=DocumentResponse, summary="获取文档信息", description="根据文档ID获取文档信息")
 async def get_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get document information.
+    """获取文档信息。
 
     Args:
-        document_id: Document ID
-        db: Database session
+        document_id: 文档ID
+        db: 数据库会话
 
     Returns:
-        Document information
+        文档信息
     """
     from sqlalchemy.future import select
     result = await db.execute(select(Document).where(Document.id == document_id))

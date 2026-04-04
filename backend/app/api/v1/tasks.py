@@ -1,5 +1,5 @@
 """
-Task management API endpoints.
+任务管理 API 端点。
 """
 from typing import Optional
 
@@ -18,23 +18,23 @@ from app.schemas import (
 )
 from app.services import TaskService, TaskServiceError
 
-router = APIRouter(prefix="/tasks", tags=["Tasks"])
+router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.get("/{task_id}/status", response_model=TaskStatusResponse)
+@router.get("/{task_id}/status", response_model=TaskStatusResponse, summary="获取任务状态", description="获取处理任务的状态")
 async def get_task_status(
     task_id: UUID4,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get the status of a processing task.
+    """获取处理任务的状态。
 
     Args:
-        task_id: Task ID (UUID format)
-        db: Database session
+        task_id: 任务ID（UUID格式）
+        db: 数据库会话
 
     Returns:
-        Task status information
+        任务状态信息
     """
     task_service = TaskService(db)
     try:
@@ -46,20 +46,20 @@ async def get_task_status(
         )
 
 
-@router.get("/{task_id}/result", response_model=TaskResultResponse)
+@router.get("/{task_id}/result", response_model=TaskResultResponse, summary="获取任务结果", description="获取已完成任务的提取结果")
 async def get_task_result(
     task_id: UUID4,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get the result of a completed task.
+    """获取已完成任务的提取结果。
 
     Args:
-        task_id: Task ID (UUID format)
-        db: Database session
+        task_id: 任务ID（UUID格式）
+        db: 数据库会话
 
     Returns:
-        Task result with extracted data
+        任务结果，包含提取的数据
     """
     task_service = TaskService(db)
     task = await task_service.get_task(str(task_id))
@@ -77,44 +77,44 @@ async def get_task_result(
     )
 
 
-@router.get("", response_model=list[TaskResponse])
+@router.get("", response_model=list[TaskResponse], summary="任务列表", description="列出任务，支持按状态筛选")
 async def list_tasks(
-    status: Optional[TaskStatus] = Query(None, description="Filter by status"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    status: Optional[TaskStatus] = Query(None, description="按任务状态筛选"),
+    limit: int = Query(100, ge=1, le=1000, description="返回结果的最大数量"),
+    offset: int = Query(0, ge=0, description="跳过的结果数量"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List tasks with optional filtering.
+    """列出任务，支持按状态筛选。
 
     Args:
-        status: Filter by task status
-        limit: Maximum number of results
-        offset: Number of results to skip
-        db: Database session
+        status: 按任务状态筛选
+        limit: 返回结果的最大数量
+        offset: 跳过的结果数量
+        db: 数据库会话
 
     Returns:
-        List of tasks
+        任务列表
     """
     task_service = TaskService(db)
     tasks = await task_service.list_tasks(status, limit, offset)
     return tasks
 
 
-@router.post("/{task_id}/cancel", response_model=ErrorResponse)
+@router.post("/{task_id}/cancel", response_model=ErrorResponse, summary="取消任务", description="取消一个待处理的任务")
 async def cancel_task(
     task_id: UUID4,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Cancel a pending task.
+    """取消一个待处理的任务。
 
     Args:
-        task_id: Task ID (UUID format)
-        db: Database session
+        task_id: 任务ID（UUID格式）
+        db: 数据库会话
 
     Returns:
-        Cancellation result
+        取消结果
     """
     task_service = TaskService(db)
     cancelled = await task_service.cancel_task(str(task_id))
