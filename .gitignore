@@ -146,7 +146,12 @@ Thumbs.db
 local_settings.py
 settings_local.py
 
+# hfy虚拟环境
+myenv/
 
 # hfy虚拟环境日志
 python虚拟环境.md
+
+# 测试
 test/
+
