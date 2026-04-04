@@ -17,6 +17,7 @@ from app.models import Document, DocumentType, User
 from app.schemas import DocumentResponse, UploadResponse, ErrorResponse
 from app.services import TaskService
 from app.utils.file_utils import validate_file_type, save_upload_file
+from app.core.tasks import process_document_task
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 settings = get_settings()
@@ -99,6 +100,14 @@ async def upload_document(
     # Create processing task
     task_service = TaskService(db)
     task = await task_service.create_task(document.id, template_id)
+
+    # ⭐ 新增：调用Celery后台处理任务 ⭐
+    try:
+        process_document_task.delay(str(task.id))
+        print(f"[API] 文档上传成功: {document.id}, 任务已发送到Celery: {task.id}")
+    except Exception as e:
+        print(f"[API] 警告: 无法发送任务到Celery: {e}")
+        # 即使Celery失败，也返回成功，但任务可能不会处理
 
     # Commit transaction
     await db.commit()
