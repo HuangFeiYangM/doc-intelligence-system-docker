@@ -58,7 +58,7 @@ class TaskService:
         task = Task(
             id=str(uuid.uuid4()),
             document_id=document_id,
-            template_id=template_id,
+            template_id=str(template_id) if template_id else None,
             status=TaskStatus.PENDING,
             progress=0
         )
@@ -122,26 +122,32 @@ class TaskService:
             document = task.document
             text = await self._parse_document(document)
 
-            # Step 2: Extract fields using LLM
+            # Step 2: Extract fields using LLM (as list for multiple records)
             await self.task_repo.update_progress(task_id, 40)
             template = None
-            field_list = []
+            field_mapping = {}
             if task.template_id:
                 template = await self.template_repo.get_by_id(task.template_id)
                 if template and template.field_mapping:
-                    field_list = list(template.field_mapping.keys())
+                    field_mapping = template.field_mapping
 
-            if not field_list:
+            if not field_mapping:
                 # Default fields if no template
-                field_list = ["名称", "日期", "金额", "描述"]
+                field_mapping = {
+                    "名称": "A2",
+                    "日期": "B2",
+                    "金额": "C2",
+                    "描述": "D2"
+                }
 
-            extracted_data = await self.llm_service.extract_fields(text, field_list)
+            # Use extract_fields_list with field_mapping to guide LLM output
+            extracted_data_list = await self.llm_service.extract_fields_list_with_mapping(text, field_mapping)
 
             # Step 3: Generate output file
             await self.task_repo.update_progress(task_id, 80)
-            output_path = await self._generate_output(
+            output_path = await self._generate_output_list(
                 task_id,
-                extracted_data,
+                extracted_data_list,
                 template
             )
 
@@ -151,7 +157,7 @@ class TaskService:
                 TaskStatus.COMPLETED,
                 progress=100,
                 completed_at=datetime.utcnow(),
-                extracted_data=extracted_data,
+                extracted_data=extracted_data_list,
                 output_file_path=str(output_path) if output_path else None
             )
 
@@ -216,6 +222,67 @@ class TaskService:
                 generator = TableGenerator()
                 generator.load_template(output_path)
                 generator.fill_data(data)
+                generator.save(output_path)
+
+            return output_path
+        except TableGeneratorError as e:
+            raise TaskServiceError(f"Table generation failed: {str(e)}")
+
+    async def _generate_output_list(
+        self,
+        task_id: str,
+        data_list: list,
+        template: Optional[Template]
+    ) -> Optional[Path]:
+        """Generate output Excel file for list of records.
+
+        Args:
+            task_id: Task ID
+            data_list: List of extracted data records
+            template: Template model
+
+        Returns:
+            Path to generated file or None
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            output_path = settings.OUTPUT_DIR / f"{task_id}.xlsx"
+
+            # Debug logging
+            logger.info(f"[_generate_output_list] Task {task_id}: {len(data_list)} records")
+            logger.info(f"[_generate_output_list] Data list: {data_list}")
+            logger.info(f"[_generate_output_list] Template: {template}")
+            if template:
+                logger.info(f"[_generate_output_list] Field mapping: {template.field_mapping}")
+
+            if not data_list:
+                # Empty list, create empty file with headers
+                if template and template.field_mapping:
+                    headers = list(template.field_mapping.keys())
+                else:
+                    headers = ["名称", "日期", "金额", "描述"]
+                TableGenerator.create_template(output_path, headers)
+                return output_path
+
+            if template and template.file_path:
+                # Use template with multiple rows
+                field_mapping = template.field_mapping or {}
+                self.table_generator.generate_from_template_list(
+                    template.file_path,
+                    data_list,
+                    field_mapping,
+                    output_path
+                )
+            else:
+                # Create new file with headers from first record
+                headers = list(data_list[0].keys())
+                TableGenerator.create_template(output_path, headers)
+                # Fill multiple rows of data
+                generator = TableGenerator()
+                generator.load_template(output_path)
+                generator.fill_data_list(data_list)
                 generator.save(output_path)
 
             return output_path

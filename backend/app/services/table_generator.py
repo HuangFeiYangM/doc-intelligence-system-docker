@@ -166,6 +166,104 @@ class TableGenerator:
 
         return filled_count
 
+    def fill_data_list(
+        self,
+        data_list: list,
+        field_mapping: Optional[Dict[str, str]] = None,
+        sheet_name: Optional[str] = None
+    ) -> "TableGenerator":
+        """Fill multiple rows of data into the template.
+
+        Args:
+            data_list: List of dictionaries with field names and values
+            field_mapping: Mapping of field names to cell addresses (e.g., {"name": "B2"})
+            sheet_name: Target sheet name (uses active sheet if None)
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            TableGeneratorError: If data cannot be filled
+        """
+        if not self.workbook:
+            raise TableGeneratorError("No template loaded. Call load_template() first.")
+
+        if not data_list:
+            logger.warning("Empty data list, nothing to fill")
+            return self
+
+        # Debug logging
+        logger.info(f"[fill_data_list] Filling {len(data_list)} records")
+        logger.info(f"[fill_data_list] First record: {data_list[0] if data_list else 'N/A'}")
+        logger.info(f"[fill_data_list] Field mapping: {field_mapping}")
+        logger.info(f"[fill_data_list] Available fields in data: {list(data_list[0].keys()) if data_list else 'N/A'}")
+        logger.info(f"[fill_data_list] Field mapping keys: {list(field_mapping.keys()) if field_mapping else 'N/A'}")
+
+        try:
+            if sheet_name:
+                try:
+                    sheet = self.workbook[sheet_name]
+                except KeyError:
+                    logger.error(f"Sheet not found: {sheet_name}")
+                    raise TableGeneratorError(f"Sheet not found: {sheet_name}")
+            else:
+                sheet = self.workbook.active
+
+            total_filled = 0
+
+            if field_mapping:
+                # Layout: Horizontal table with headers in row 1, each person in a new row
+                # Row 1: Headers (姓名, 职位, 任务, 部门, 联系方式)
+                # Row 2: Person 1's data
+                # Row 3: Person 2's data
+                # etc.
+
+                logger.info(f"[fill_data_list] Using row-based layout for {len(data_list)} records")
+
+                # Find the starting row (should be row 2, after headers)
+                start_row = 2
+                for addr in field_mapping.values():
+                    row_num = ''.join(c for c in addr if c.isdigit())
+                    if row_num:
+                        start_row = min(start_row, int(row_num))
+
+                logger.info(f"[fill_data_list] Starting from row {start_row}")
+
+                for record_idx, data in enumerate(data_list):
+                    target_row = start_row + record_idx
+                    logger.info(f"[fill_data_list] Record {record_idx}: filling into row {target_row}")
+
+                    for field_name, cell_template in field_mapping.items():
+                        # Extract column letter from cell template (e.g., "B3" -> "B")
+                        col_letter = ''.join(c for c in cell_template if c.isalpha())
+                        if not col_letter:
+                            continue
+
+                        # Construct new cell address with target row
+                        new_cell_address = f"{col_letter}{target_row}"
+
+                        # LLM now returns exact field names from template, so direct lookup should work
+                        if field_name in data and data[field_name] is not None:
+                            value = data[field_name]
+                            sheet[new_cell_address] = value
+                            total_filled += 1
+                            logger.debug(f"[fill_data_list] Filled {field_name}='{value}' at {new_cell_address}")
+                        else:
+                            logger.warning(f"[fill_data_list] Field '{field_name}' not found in record {record_idx}")
+            else:
+                # Auto-fill: assume first row is headers, find matching columns
+                for data in data_list:
+                    filled_count = self._auto_fill_data(sheet, data)
+                    total_filled += filled_count
+
+            logger.info(f"[fill_data_list] Total filled {total_filled} fields for {len(data_list)} records")
+            return self
+        except TableGeneratorError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fill data list: {e}", exc_info=True)
+            raise TableGeneratorError(f"Failed to fill data list: {str(e)}")
+
     def save(self, output_path: Union[str, Path]) -> Path:
         """Save the filled workbook.
 
@@ -214,6 +312,37 @@ class TableGenerator:
             result = (
                 self.load_template(template_path)
                 .fill_data(data, field_mapping)
+                .save(output_path)
+            )
+            logger.info(f"Excel generation completed: {output_path}")
+            return result
+        except Exception as e:
+            logger.error(f"Excel generation failed: {e}", exc_info=True)
+            raise
+
+    def generate_from_template_list(
+        self,
+        template_path: Union[str, Path],
+        data_list: list,
+        field_mapping: Dict[str, str],
+        output_path: Union[str, Path]
+    ) -> Path:
+        """One-step method to generate Excel from template with multiple records.
+
+        Args:
+            template_path: Path to template file
+            data_list: List of data records to fill
+            field_mapping: Field to cell mapping
+            output_path: Output file path
+
+        Returns:
+            Path to generated file
+        """
+        logger.info(f"Generating Excel from template with {len(data_list)} records: {template_path}")
+        try:
+            result = (
+                self.load_template(template_path)
+                .fill_data_list(data_list, field_mapping)
                 .save(output_path)
             )
             logger.info(f"Excel generation completed: {output_path}")

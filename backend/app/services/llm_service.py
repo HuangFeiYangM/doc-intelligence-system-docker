@@ -209,6 +209,217 @@ class LLMService:
             logger.error(f"Field extraction failed: {e}", exc_info=True)
             raise LLMServiceError(f"Field extraction failed: {str(e)}")
 
+    async def extract_fields_list(self, text: str, field_list: List[str]) -> List[Dict[str, Any]]:
+        """Extract list of records with specified fields from text using LLM.
+
+        This method is designed for extracting multiple records (e.g., multiple persons)
+        from a document. It returns a list of dictionaries, where each dictionary
+        represents one record.
+
+        Args:
+            text: Document text content
+            field_list: List of field names to extract for each record
+
+        Returns:
+            List of dictionaries, each containing field values for one record
+        """
+        logger.info(f"Extracting list of records with fields: {field_list}")
+
+        # Truncate text if too long to avoid token limit
+        max_text_length = 8000
+        if len(text) > max_text_length:
+            logger.warning(f"Text too long ({len(text)} chars), truncating to {max_text_length}")
+            text = text[:max_text_length] + "\n[Content truncated...]"
+
+        fields_str = ", ".join(field_list)
+
+        system_message = "You are a helpful data extraction assistant that returns only valid JSON. ALWAYS return a JSON array, even for a single record."
+        prompt_template = (
+            "You are a data extraction assistant. Please extract PERSON records with the following fields from the provided text.\n"
+            "The document may contain MULTIPLE people (e.g., multiple developers, team members).\n"
+            "CRITICAL: You MUST return a JSON ARRAY (start with [ and end with ]), even if there is only ONE person.\n\n"
+            "Fields to extract for EACH person: {fields}\n\n"
+            "Text content:\n{text}\n\n"
+            "CRITICAL RULES - READ CAREFULLY:\n"
+            "1. EACH person gets their OWN separate JSON object in the array\n"
+            "2. If you see '黄飞扬：后端开发...' and '谷强：前端开发...', create TWO records:\n"
+            "   [{{'姓名': '黄飞扬', '职位': '后端开发工程师', ...}}, {{'姓名': '谷强', '职位': '前端开发工程师', ...}}]\n"
+            "3. NEVER put two names in different fields of the same object - that's WRONG\n"
+            "4. WRONG example (NEVER DO THIS): {{'姓名': '黄飞扬', '人员姓名': '谷强'}}\n"
+            "5. CORRECT: Create separate objects for each person\n"
+            "6. Use EXACTLY the same field names for every person record\n\n"
+            "PERSON IDENTIFICATION:\n"
+            "- Look for sections like '主要参加人员', '开发者', '人员分工', '团队成员'\n"
+            "- Each person usually has their own paragraph starting with their name\n"
+            "- Common patterns: '姓名：描述' or '姓名 - 职位' or '姓名：任务'\n\n"
+            "RETURN FORMAT:\n"
+            "1. MUST be a JSON ARRAY starting with [ and ending with ]\n"
+            "2. Each object in the array is ONE person with the SAME field names\n"
+            "3. If only one person: [{{'姓名': '张三', '职位': '工程师', ...}}]\n"
+            "4. If two people: [{{'姓名': '张三', ...}}, {{'姓名': '李四', ...}}]\n"
+            "5. Use null for missing fields, but still include the field name\n"
+            "6. Do NOT use markdown, do NOT add explanations\n\n"
+            "CORRECT examples:\n"
+            "Two people:  [{{'姓名': '黄飞扬', '职位': '后端开发', '任务': '架构设计'}}, {{'姓名': '谷强', '职位': '前端开发', '任务': 'UI设计'}}]\n"
+            "One person:  [{{'姓名': '张三', '职位': '工程师', '任务': '开发'}}]\n"
+            "No people:   []\n\n"
+            "Your JSON response (array format):"
+        )
+        prompt = prompt_template.format(fields=fields_str, text=text)
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+
+        try:
+            logger.debug("Calling API for list field extraction")
+            response = await self.call_api(messages)
+            result = self._parse_json_list_response(response, field_list)
+            logger.info(f"List extraction completed, found {len(result)} records")
+            return result
+        except LLMServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"List field extraction failed: {e}", exc_info=True)
+            raise LLMServiceError(f"List field extraction failed: {str(e)}")
+
+    async def extract_fields_list_with_mapping(
+        self,
+        text: str,
+        field_mapping: Dict[str, str]
+    ) -> List[Dict[str, Any]]:
+        """Extract list of records using exact field names from template mapping.
+
+        This method tells LLM the exact field names to use, eliminating the need
+        for fuzzy matching later.
+
+        Args:
+            text: Document text content
+            field_mapping: Template field mapping dict (field_name -> cell_address)
+
+        Returns:
+            List of dictionaries with exact field names from template
+        """
+        # Get unique field names from mapping
+        field_names = list(dict.fromkeys(field_mapping.keys()))
+        logger.info(f"Extracting with exact field names: {field_names}")
+
+        # Truncate text if too long
+        max_text_length = 8000
+        if len(text) > max_text_length:
+            logger.warning(f"Text too long ({len(text)} chars), truncating to {max_text_length}")
+            text = text[:max_text_length] + "\n[Content truncated...]"
+
+        fields_str = ", ".join(field_names)
+
+        system_message = "You are a helpful data extraction assistant that returns only valid JSON."
+        prompt_template = (
+            "You are a data extraction assistant. Please extract person records from the provided text.\n"
+            "The document may contain MULTIPLE people (e.g., multiple developers, team members).\n\n"
+            "CRITICAL: Use EXACTLY these field names in your response (do not change them):\n"
+            "{fields}\n\n"
+            "Text content:\n{text}\n\n"
+            "INSTRUCTIONS:\n"
+            "1. Identify ALL separate people in the text\n"
+            "2. For each person, create a JSON object using EXACTLY the field names listed above\n"
+            "3. If a field doesn't apply to a person, use null as the value\n"
+            "4. Return a JSON ARRAY with one object per person\n"
+            "5. Use the EXACT field names provided - do not create your own\n"
+            "6. Do NOT combine multiple people into one record\n"
+            "7. Do NOT use markdown, do NOT add explanations\n\n"
+            "Example with fields '姓名,职位,任务':\n"
+            "[{{'姓名': '张三', '职位': '工程师', '任务': '后端开发'}}, {{'姓名': '李四', '职位': '设计师', '任务': 'UI设计'}}]\n\n"
+            "Your JSON response (use exact field names: {fields}):"
+        )
+        prompt = prompt_template.format(fields=fields_str, text=text)
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+
+        try:
+            logger.debug("Calling API with exact field mapping")
+            response = await self.call_api(messages)
+            result = self._parse_json_list_response_with_mapping(response, field_names)
+            logger.info(f"Extraction completed with exact fields, found {len(result)} records")
+            return result
+        except LLMServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"Field extraction with mapping failed: {e}", exc_info=True)
+            raise LLMServiceError(f"Field extraction with mapping failed: {str(e)}")
+
+    def _parse_json_list_response_with_mapping(
+        self,
+        response: str,
+        expected_fields: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Parse JSON response ensuring exact field names from template.
+
+        Args:
+            response: Raw API response
+            expected_fields: Exact field names from template
+
+        Returns:
+            List of dictionaries with exact field names
+        """
+        logger.debug(f"Parsing with expected fields: {expected_fields}")
+
+        # Try to extract JSON from markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response, re.DOTALL)
+        if json_match:
+            response = json_match.group(1)
+
+        response = response.strip()
+
+        # Parse JSON
+        result = None
+        try:
+            result = json.loads(response)
+        except json.JSONDecodeError:
+            result = self._extract_json_with_balanced_brackets(response)
+
+        if result is None:
+            raise LLMServiceError("Failed to parse LLM response as JSON")
+
+        # Ensure it's a list
+        if not isinstance(result, list):
+            if isinstance(result, dict):
+                result = [result]
+            else:
+                result = []
+
+        # Normalize each record to have exact field names
+        normalized_results = []
+        for record in result:
+            if not isinstance(record, dict):
+                continue
+
+            normalized = {}
+            for field in expected_fields:
+                # Try exact match first
+                if field in record:
+                    normalized[field] = record[field]
+                else:
+                    # Try case-insensitive match
+                    field_lower = field.lower()
+                    matched = False
+                    for key, value in record.items():
+                        if key.lower() == field_lower:
+                            normalized[field] = value
+                            matched = True
+                            break
+                    if not matched:
+                        normalized[field] = None
+                        logger.warning(f"Field '{field}' not found in LLM response")
+
+            normalized_results.append(normalized)
+
+        logger.debug(f"Normalized {len(normalized_results)} records with exact fields")
+        return normalized_results
+
     def _parse_json_response(self, response: str, field_list: List[str]) -> Dict[str, Any]:
         """Parse JSON response from LLM.
 
@@ -254,6 +465,119 @@ class LLMService:
 
         logger.debug(f"Parsed result: {validated_result}")
         return validated_result
+
+    def _parse_json_list_response(self, response: str, field_list: List[str]) -> List[Dict[str, Any]]:
+        """Parse JSON array response from LLM for list extraction.
+
+        Args:
+            response: Raw API response string
+            field_list: Expected field names for each record
+
+        Returns:
+            List of parsed dictionaries
+        """
+        logger.debug(f"Parsing JSON list response for fields: {field_list}")
+        logger.debug(f"Raw response: {response[:1000]}...")
+
+        # Try to extract JSON from markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response, re.DOTALL)
+        if json_match:
+            response = json_match.group(1)
+            logger.debug(f"Extracted from markdown code block")
+
+        # Clean up the response
+        response = response.strip()
+        logger.debug(f"Cleaned response: {response[:1000]}...")
+
+        result = None
+        try:
+            result = json.loads(response)
+            logger.debug(f"Successfully parsed JSON directly")
+        except json.JSONDecodeError as e1:
+            logger.debug(f"Direct JSON parse failed: {e1}, trying to extract JSON...")
+
+            # Strategy: find the outermost brackets or braces
+            # First, try to find a JSON array by matching balanced brackets
+            result = self._extract_json_with_balanced_brackets(response)
+
+            if result is None:
+                logger.error(f"Failed to extract valid JSON from response: {response[:1000]}")
+                raise LLMServiceError(f"Failed to parse LLM response as JSON: {str(e1)}")
+
+        # Ensure result is a list
+        if not isinstance(result, list):
+            logger.warning(f"Expected list but got {type(result).__name__}, wrapping in list")
+            if isinstance(result, dict):
+                result = [result]
+            else:
+                result = []
+
+        # Ensure result is a list
+        if not isinstance(result, list):
+            logger.warning(f"Expected list but got {type(result).__name__}, wrapping in list")
+            if isinstance(result, dict):
+                result = [result]
+            else:
+                result = []
+
+        # Validate each record contains expected fields
+        validated_results = []
+        for idx, record in enumerate(result):
+            if not isinstance(record, dict):
+                logger.warning(f"Record {idx} is not a dict, skipping: {record}")
+                continue
+            validated_record = {}
+            for field in field_list:
+                validated_record[field] = record.get(field)
+                if field not in record:
+                    logger.warning(f"Expected field '{field}' not found in record {idx}")
+            validated_results.append(validated_record)
+
+        logger.info(f"Parsed {len(validated_results)} valid records from LLM response")
+        return validated_results
+
+    def _extract_json_with_balanced_brackets(self, text: str):
+        """Extract JSON by finding balanced brackets or braces.
+
+        This method properly handles nested structures by counting brackets.
+
+        Args:
+            text: Text that may contain JSON
+
+        Returns:
+            Parsed JSON object/list or None if extraction fails
+        """
+        text = text.strip()
+
+        # Try to find an array first (starts with [)
+        for start_char, end_char in [('[', ']'), ('{', '}')]:
+            start_idx = text.find(start_char)
+            if start_idx == -1:
+                continue
+
+            # Find the matching closing bracket by counting
+            count = 0
+            end_idx = -1
+            for i in range(start_idx, len(text)):
+                if text[i] == start_char:
+                    count += 1
+                elif text[i] == end_char:
+                    count -= 1
+                    if count == 0:
+                        end_idx = i
+                        break
+
+            if end_idx != -1:
+                json_str = text[start_idx:end_idx + 1]
+                try:
+                    result = json.loads(json_str)
+                    logger.debug(f"Successfully extracted JSON using balanced {start_char}{end_char}")
+                    return result
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to parse extracted {start_char}...{end_char} as JSON")
+                    continue
+
+        return None
 
     async def analyze_document(self, text: str, analysis_type: str = "summary") -> Dict[str, Any]:
         """Analyze document content using LLM.
