@@ -75,7 +75,8 @@ async def upload_document(
     }
     doc_type = doc_type_map.get(file_ext, DocumentType.PDF)
 
-    # Save file
+    # Save file (use absolute path to ensure consistency)
+    file_path = file_path.absolute()
     try:
         file_size = await save_upload_file(file, file_path)
     except Exception as e:
@@ -84,7 +85,7 @@ async def upload_document(
             detail=f"Failed to save file: {str(e)}"
         )
 
-    # Create document record
+    # Create document record (store absolute path)
     document = Document(
         id=doc_id,
         filename=stored_filename,

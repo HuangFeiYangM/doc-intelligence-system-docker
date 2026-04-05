@@ -112,17 +112,28 @@ class Settings(BaseSettings):
     @field_validator("UPLOAD_DIR", "TEMPLATE_DIR", "OUTPUT_DIR", "LOG_DIR", mode="before")
     @classmethod
     def validate_paths(cls, v, info: FieldValidationInfo):
-        """Convert string paths to Path objects and resolve relative paths."""
+        """Convert string paths to Path objects and resolve relative paths.
+
+        Handles both Docker and local environments correctly:
+        - In Docker: paths should resolve to /app/uploads, /app/templates, etc.
+        - Locally: paths resolve relative to the backend directory.
+        """
         if isinstance(v, str):
-            # If path is relative and starts with ./, resolve relative to BASE_DIR
+            # Get BASE_DIR from values if available
+            values = info.data
+            base_dir = values.get("BASE_DIR", Path(__file__).parent.parent.absolute())
+
+            # Handle relative paths starting with ./ or ../
             if v.startswith("./") or v.startswith("../"):
-                # Get BASE_DIR from values if available
-                values = info.data
-                base_dir = values.get("BASE_DIR", Path(__file__).parent.parent.absolute())
-                return (base_dir.parent / v).resolve()
+                # Resolve relative to base_dir directly (not base_dir.parent)
+                # This ensures ./uploads becomes /app/uploads in Docker (base_dir is /app/app)
+                path = base_dir / v
+                # Use absolute() instead of resolve() to avoid symlink resolution issues
+                # that can cause paths to be incorrectly shortened
+                return path.absolute()
             else:
                 # Absolute path or relative without ./
-                return Path(v).resolve()
+                return Path(v).absolute()
         return v
 
     @field_validator("MAX_UPLOAD_SIZE", mode="before")
@@ -168,5 +179,5 @@ def ensure_directories():
     """Create necessary directories if they don't exist."""
     settings = get_settings()
     for directory in [settings.UPLOAD_DIR, settings.TEMPLATE_DIR,
-                      settings.OUTPUT_DIR, settings.LOG_DIR]:
+                    settings.OUTPUT_DIR, settings.LOG_DIR]:
         directory.mkdir(parents=True, exist_ok=True)

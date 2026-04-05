@@ -178,6 +178,24 @@ class DocumentParser:
         file_path = Path(file_path)
         logger.info(f"Starting text extraction: {file_path}")
 
+        # Path fallback mechanism: if file doesn't exist at the given path,
+        # try alternative paths (handles path mismatches between API and Celery worker)
+        if not file_path.exists():
+            original_path = file_path
+            # Try to find the file in alternative locations
+            alternative_paths = [
+                # Try with settings.UPLOAD_DIR
+                settings.UPLOAD_DIR / file_path.name,
+                # Try prepending /app (common Docker path issue)
+                Path("/app") / file_path.relative_to(file_path.anchor) if file_path.is_absolute() else Path("/app") / file_path,
+            ]
+
+            for alt_path in alternative_paths:
+                if alt_path.exists():
+                    logger.warning(f"File not found at {original_path}, using alternative path: {alt_path}")
+                    file_path = alt_path
+                    break
+
         if not file_path.exists():
             logger.error(f"File not found: {file_path}")
             raise DocumentParserError(f"File not found: {file_path}")

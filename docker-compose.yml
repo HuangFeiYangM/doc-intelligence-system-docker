@@ -49,6 +49,11 @@ services:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       - DEBUG=${DEBUG:-true}
+      # Explicit path configuration for Docker environment
+      - UPLOAD_DIR=/app/uploads
+      - TEMPLATE_DIR=/app/templates
+      - OUTPUT_DIR=/app/outputs
+      - LOG_DIR=/app/logs
     env_file:
       - ./backend/.env.backend
     volumes:
@@ -73,6 +78,11 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      # Explicit path configuration for Docker environment (must match backend service)
+      - UPLOAD_DIR=/app/uploads
+      - TEMPLATE_DIR=/app/templates
+      - OUTPUT_DIR=/app/outputs
+      - LOG_DIR=/app/logs
     env_file:
       - ./backend/.env.backend
     volumes:
